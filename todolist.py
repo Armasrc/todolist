@@ -6,7 +6,7 @@ from tkinter import messagebox
 class TodoApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("To-Do List")
+        self.root.title("Uzrasine")
 
         self.tasks = self.load_tasks()
 
