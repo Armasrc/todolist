@@ -2,6 +2,32 @@ import os
 import tkinter as tk
 from tkinter import ttk, simpledialog, messagebox
 
+class FormatDialog(simpledialog.Dialog):
+    def __init__(self, parent, title="Formato pasirinkimas"):
+        self.choice = "Nėra"
+        super().__init__(parent, title)
+
+    def body(self, master):
+        ttk.Label(master, text="Pasirinkite formatą:").grid(row=0, column=0, padx=10, pady=(10, 0), sticky="w")
+        self.format_var = tk.StringVar(value="Nėra")
+        options = ["Nėra", "Paryškintas", "Kursyvas", "Žymėti", "Perbraukti"]
+        self.option_menu = ttk.OptionMenu(master, self.format_var, options[0], *options)
+        self.option_menu.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+        return self.option_menu
+
+    def buttonbox(self):
+        box = ttk.Frame(self)
+        ok_button = ttk.Button(box, text="OK", width=10, command=self.ok, default="active")
+        ok_button.pack(side=tk.LEFT, padx=5, pady=5)
+        cancel_button = ttk.Button(box, text="Atšaukti", width=10, command=self.cancel)
+        cancel_button.pack(side=tk.LEFT, padx=5, pady=5)
+        self.bind("<Return>", self.ok)
+        self.bind("<Escape>", self.cancel)
+        box.pack()
+
+    def apply(self):
+        self.choice = self.format_var.get()
+
 class TodoApp:
     def __init__(self, root):
         self.root = root
@@ -70,6 +96,8 @@ class TodoApp:
             ("Peržiūrėti", self.view_task),
             ("Pridėti", self.add_task),
             ("Atnaujinti", self.update_task),
+            ("Formatuoti", self.format_task),
+            ("Žymėti", self.toggle_checkbox),
             ("Užbaigti", self.mark_completed),
             ("Ištrinti", self.delete_task),
         ]
@@ -88,7 +116,7 @@ class TodoApp:
 
         # Status bar
         self.status_var = tk.StringVar()
-        self.status_var.set("Ready")
+        self.status_var.set("Paruošta")
         status_bar = ttk.Label(root, textvariable=self.status_var, anchor="w", padding=5)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
@@ -116,6 +144,51 @@ class TodoApp:
             for task in self.tasks:
                 file.write(task + "\n")
 
+    def choose_format(self):
+        format_dialog = FormatDialog(self.root)
+        return format_dialog.choice
+
+    def apply_text_format(self, text, style):
+        if style == "Paryškintas":
+            return self.to_bold(text)
+        if style == "Kursyvas":
+            return self.to_italic(text)
+        if style == "Žymėti":
+            return self.toggle_checkbox_state(text)
+        if style == "Perbraukti":
+            return self.to_strikethrough(text)
+        if style == "Nėra":
+            return text
+        return text
+
+    def to_bold(self, text):
+        bold_mapping = {}
+        for i, char in enumerate("ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
+            bold_mapping[char] = chr(0x1D400 + i)
+        for i, char in enumerate("abcdefghijklmnopqrstuvwxyz"):
+            bold_mapping[char] = chr(0x1D41A + i)
+        for i, char in enumerate("0123456789"):
+            bold_mapping[char] = chr(0x1D7CE + i)
+        return "".join(bold_mapping.get(ch, ch) for ch in text)
+
+    def to_italic(self, text):
+        italic_mapping = {}
+        for i, char in enumerate("ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
+            italic_mapping[char] = chr(0x1D434 + i)
+        for i, char in enumerate("abcdefghijklmnopqrstuvwxyz"):
+            italic_mapping[char] = chr(0x1D44E + i)
+        return "".join(italic_mapping.get(ch, ch) for ch in text)
+
+    def to_strikethrough(self, text):
+        return "".join((ch + "\u0336") if ch != " " else ch for ch in text)
+
+    def toggle_checkbox_state(self, text):
+        if text.startswith("☐ "):
+            return "☑ " + text[2:]
+        if text.startswith("☑ "):
+            return "☐ " + text[2:]
+        return "☐ " + text
+
     def update_task_listbox(self):
         self.task_listbox.delete(0, tk.END)
         for task in self.tasks:
@@ -138,6 +211,8 @@ class TodoApp:
     def add_task(self):
         task = simpledialog.askstring("Pridėti įrašą", "Įrašykite norimą įrašą:")
         if task:
+            format_choice = self.choose_format()
+            task = self.apply_text_format(task, format_choice)
             self.tasks.append(task)
             self.update_task_listbox()
             self.status_var.set("Įrašas pridėtas")
@@ -147,9 +222,33 @@ class TodoApp:
         if index is not None:
             new_task = simpledialog.askstring("Atnaujinti įrašą", "Įrašykite norimą įrašą:")
             if new_task:
-                self.tasks[index] = new_task
+                format_choice = self.choose_format()
+                self.tasks[index] = self.apply_text_format(new_task, format_choice)
                 self.update_task_listbox()
                 self.status_var.set("Įrašas atnaujintas")
+
+    def format_task(self):
+        index = self.get_selected_index()
+        if index is not None:
+            format_choice = self.choose_format()
+            if format_choice and format_choice != "Nėra":
+                self.tasks[index] = self.apply_text_format(self.tasks[index], format_choice)
+                self.update_task_listbox()
+                self.status_var.set(f"Įrašas suformatuotas: {format_choice}")
+            else:
+                self.status_var.set("Nėra formato pakeitimų")
+
+    def toggle_checkbox(self):
+        index = self.get_selected_index()
+        if index is not None:
+            current = self.tasks[index]
+            updated = self.toggle_checkbox_state(current)
+            self.tasks[index] = updated
+            self.update_task_listbox()
+            if updated.startswith("☑"):
+                self.status_var.set("Žymeklis pažymėtas")
+            else:
+                self.status_var.set("Žymeklis atžymėtas")
 
     def mark_completed(self):
         index = self.get_selected_index()
